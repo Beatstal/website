@@ -1,595 +1,454 @@
 <!DOCTYPE html>
-<html lang="th">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Smart Money Tracker</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-
-  <!-- TailwindCSS CDN -->
-  <script src="https://cdn.tailwindcss.com"></script>
-
-  <!-- React + ReactDOM (UMD) -->
-  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
-  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-
-  <!-- Babel สำหรับแปลง JSX ใน browser -->
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-
-  <!-- Recharts UMD -->
-  <script src="https://unpkg.com/recharts/umd/Recharts.min.js"></script>
-</head>
-<body class="bg-gray-50">
-  <div id="root"></div>
-
-  <script type="text/babel">
-    const { useState, useEffect } = React;
-    const {
-      PieChart,
-      Pie,
-      Cell,
-      BarChart,
-      Bar,
-      XAxis,
-      YAxis,
-      CartesianGrid,
-      Tooltip,
-      Legend,
-      ResponsiveContainer,
-      LineChart,
-      Line
-    } = Recharts;
-
-    // ใช้ localStorage แทน window.storage
-    const storage = {
-      async get(key) {
-        const value = window.localStorage.getItem(key);
-        return value ? { value } : null;
-      },
-      async set(key, value) {
-        window.localStorage.setItem(key, value);
-      }
-    };
-
-    const COLORS = ['#667eea', '#764ba2', '#f093fb', '#4facfe', '#43e97b', '#fa709a', '#fee140', '#30cfd0'];
-
-    const CATEGORIES = {
-      income: ['เงินเดือน', 'ธุรกิจ', 'ลงทุน', 'ของขวัญ', 'อื่นๆ'],
-      expense: ['อาหาร', 'ที่พัก', 'เดินทาง', 'ช้อปปิ้ง', 'บันเทิง', 'สุขภาพ', 'การศึกษา', 'อื่นๆ']
-    };
-
-    function MoneyTracker() {
-      const [isLoggedIn, setIsLoggedIn] = useState(false);
-      const [currentUser, setCurrentUser] = useState('');
-      const [username, setUsername] = useState('');
-      const [password, setPassword] = useState('');
-
-      const [transactions, setTransactions] = useState([]);
-      const [showAddForm, setShowAddForm] = useState(false);
-      const [filterPeriod, setFilterPeriod] = useState('all');
-      const [filterType, setFilterType] = useState('all');
-
-      const [formData, setFormData] = useState({
-        type: 'expense',
-        amount: '',
-        category: '',
-        description: '',
-        date: new Date().toISOString().split('T')[0],
-        tags: ''
-      });
-
-      // โหลดข้อมูลของ user จาก localStorage
-      useEffect(() => {
-        if (isLoggedIn && currentUser) {
-          loadUserData();
-        }
-      }, [isLoggedIn, currentUser]);
-
-      // เซฟข้อมูลลง localStorage เมื่อมี transaction ใหม่
-      useEffect(() => {
-        if (isLoggedIn && currentUser && transactions.length > 0) {
-          saveUserData();
-        }
-      }, [transactions]);
-
-      const loadUserData = async () => {
-        try {
-          const result = await storage.get(`transactions_${currentUser}`);
-          if (result && result.value) {
-            setTransactions(JSON.parse(result.value));
-          }
-        } catch (error) {
-          console.log('No previous data found');
-        }
-      };
-
-      const saveUserData = async () => {
-        try {
-          await storage.set(`transactions_${currentUser}`, JSON.stringify(transactions));
-        } catch (error) {
-          console.error('Error saving data:', error);
-        }
-      };
-
-      const handleLogin = async () => {
-        if (username && password) {
-          try {
-            const result = await storage.get(`user_${username}`);
-            if (result && result.value === password) {
-              setCurrentUser(username);
-              setIsLoggedIn(true);
-            } else if (!result) {
-              // user ใหม่
-              await storage.set(`user_${username}`, password);
-              setCurrentUser(username);
-              setIsLoggedIn(true);
-            } else {
-              alert('รหัสผ่านไม่ถูกต้อง');
-            }
-          } catch (error) {
-            await storage.set(`user_${username}`, password);
-            setCurrentUser(username);
-            setIsLoggedIn(true);
-          }
-        }
-      };
-
-      const handleLogout = () => {
-        setIsLoggedIn(false);
-        setCurrentUser('');
-        setTransactions([]);
-        setUsername('');
-        setPassword('');
-      };
-
-      const addTransaction = () => {
-        if (!formData.amount || !formData.category) {
-          alert('กรุณากรอกจำนวนเงินและหมวดหมู่');
-          return;
-        }
-
-        const newTransaction = {
-          id: Date.now(),
-          ...formData,
-          amount: parseFloat(formData.amount),
-          tags: formData.tags.split(',').map(t => t.trim()).filter(t => t)
-        };
-
-        setTransactions([newTransaction, ...transactions]);
-        setFormData({
-          type: 'expense',
-          amount: '',
-          category: '',
-          description: '',
-          date: new Date().toISOString().split('T')[0],
-          tags: ''
-        });
-        setShowAddForm(false);
-      };
-
-      const deleteTransaction = (id) => {
-        setTransactions(transactions.filter(t => t.id !== id));
-      };
-
-      const getFilteredTransactions = () => {
-        let filtered = [...transactions];
-
-        if (filterType !== 'all') {
-          filtered = filtered.filter(t => t.type === filterType);
-        }
-
-        const now = new Date();
-        if (filterPeriod === 'today') {
-          filtered = filtered.filter(t => t.date === now.toISOString().split('T')[0]);
-        } else if (filterPeriod === 'week') {
-          const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-          filtered = filtered.filter(t => new Date(t.date) >= weekAgo);
-        } else if (filterPeriod === 'month') {
-          filtered = filtered.filter(t => {
-            const date = new Date(t.date);
-            return date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
-          });
-        } else if (filterPeriod === 'year') {
-          filtered = filtered.filter(t => new Date(t.date).getFullYear() === now.getFullYear());
-        }
-
-        return filtered;
-      };
-
-      const calculateSummary = () => {
-        const filtered = getFilteredTransactions();
-        const income = filtered.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
-        const expense = filtered.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
-        return { income, expense, balance: income - expense };
-      };
-
-      const getCategoryData = () => {
-        const filtered = getFilteredTransactions();
-        const categoryTotals = {};
-
-        filtered.forEach(t => {
-          if (!categoryTotals[t.category]) {
-            categoryTotals[t.category] = 0;
-          }
-          categoryTotals[t.category] += t.amount;
-        });
-
-        return Object.entries(categoryTotals).map(([name, value]) => ({ name, value }));
-      };
-
-      const getMonthlyData = () => {
-        const monthlyData = {};
-
-        transactions.forEach(t => {
-          const month = t.date.substring(0, 7);
-          if (!monthlyData[month]) {
-            monthlyData[month] = { month, income: 0, expense: 0 };
-          }
-          if (t.type === 'income') {
-            monthlyData[month].income += t.amount;
-          } else {
-            monthlyData[month].expense += t.amount;
-          }
-        });
-
-        return Object.values(monthlyData).sort((a, b) => a.month.localeCompare(b.month)).slice(-6);
-      };
-
-      const summary = calculateSummary();
-      const categoryData = getCategoryData();
-      const monthlyData = getMonthlyData();
-
-      // หน้า Login
-      if (!isLoggedIn) {
-        return (
-          <div className="min-h-screen bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center p-4">
-            <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md">
-              <div className="text-center mb-8">
-                <div className="inline-block p-4 bg-purple-100 rounded-full mb-4">
-                  <span className="text-4xl">💰</span>
-                </div>
-                <h1 className="text-3xl font-bold text-gray-800 mb-2">Smart Money Tracker</h1>
-                <p className="text-gray-600">จัดการการเงินอย่างชาญฉลาด</p>
-              </div>
-
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">ชื่อผู้ใช้</label>
-                  <input
-                    type="text"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                    placeholder="กรอกชื่อผู้ใช้"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">รหัสผ่าน</label>
-                  <input
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                    placeholder="กรอกรหัสผ่าน"
-                  />
-                </div>
-
-                <button
-                  onClick={handleLogin}
-                  className="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white py-3 rounded-lg font-semibold hover:shadow-lg transform hover:scale-105 transition"
-                >
-                  เข้าสู่ระบบ / สมัครสมาชิก
-                </button>
-
-                <p className="text-sm text-gray-500 text-center">
-                  ถ้ายังไม่มีบัญชี ระบบจะสร้างบัญชีใหม่ให้อัตโนมัติ
-                </p>
-              </div>
-            </div>
-          </div>
-        );
-      }
-
-      // หน้าแอปหลัก
-      return (
-        <div className="min-h-screen bg-gray-50">
-          {/* Header */}
-          <div className="bg-gradient-to-r from-purple-600 to-pink-600 text-white p-6 shadow-lg">
-            <div className="max-w-7xl mx-auto flex justify-between items-center">
-              <div className="flex items-center gap-3">
-                <span className="text-3xl">💰</span>
-                <div>
-                  <h1 className="text-2xl font-bold">Smart Money Tracker</h1>
-                  <p className="text-sm opacity-90">สวัสดี, {currentUser}</p>
-                </div>
-              </div>
-              <button
-                onClick={handleLogout}
-                className="flex items-center gap-2 bg-white/20 hover:bg-white/30 px-4 py-2 rounded-lg transition"
-              >
-                <span className="text-lg">🚪</span>
-                ออกจากระบบ
-              </button>
-            </div>
-          </div>
-
-          <div className="max-w-7xl mx-auto p-6">
-            {/* Summary Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-              <div className="bg-gradient-to-br from-green-400 to-green-600 rounded-xl p-6 text-white shadow-lg">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-medium">รายรับ</span>
-                  <span className="text-2xl">📈</span>
-                </div>
-                <p className="text-3xl font-bold">฿{summary.income.toLocaleString()}</p>
-              </div>
-
-              <div className="bg-gradient-to-br from-red-400 to-red-600 rounded-xl p-6 text-white shadow-lg">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-medium">รายจ่าย</span>
-                  <span className="text-2xl">📉</span>
-                </div>
-                <p className="text-3xl font-bold">฿{summary.expense.toLocaleString()}</p>
-              </div>
-
-              <div className="bg-gradient-to-br from-blue-400 to-blue-600 rounded-xl p-6 text-white shadow-lg">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-medium">คงเหลือ</span>
-                  <span className="text-2xl">💵</span>
-                </div>
-                <p className="text-3xl font-bold">฿{summary.balance.toLocaleString()}</p>
-              </div>
-            </div>
-
-            {/* Filters + Add Button */}
-            <div className="bg-white rounded-xl p-6 shadow-md mb-6">
-              <div className="flex flex-wrap gap-4 items-center justify-between">
-                <div className="flex flex-wrap gap-3">
-                  <select
-                    value={filterPeriod}
-                    onChange={(e) => setFilterPeriod(e.target.value)}
-                    className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
-                  >
-                    <option value="all">ทั้งหมด</option>
-                    <option value="today">วันนี้</option>
-                    <option value="week">สัปดาห์นี้</option>
-                    <option value="month">เดือนนี้</option>
-                    <option value="year">ปีนี้</option>
-                  </select>
-
-                  <select
-                    value={filterType}
-                    onChange={(e) => setFilterType(e.target.value)}
-                    className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
-                  >
-                    <option value="all">ทั้งหมด</option>
-                    <option value="income">รายรับ</option>
-                    <option value="expense">รายจ่าย</option>
-                  </select>
-                </div>
-
-                <button
-                  onClick={() => setShowAddForm(!showAddForm)}
-                  className="flex items-center gap-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white px-6 py-2 rounded-lg hover:shadow-lg transition"
-                >
-                  <span className="text-lg">➕</span>
-                  เพิ่มรายการ
-                </button>
-              </div>
-            </div>
-
-            {/* Add Form */}
-            {showAddForm && (
-              <div className="bg-white rounded-xl p-6 shadow-md mb-6">
-                <h3 className="text-xl font-bold mb-4">เพิ่มรายการใหม่</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium mb-2">ประเภท</label>
-                    <select
-                      value={formData.type}
-                      onChange={(e) => setFormData({ ...formData, type: e.target.value, category: '' })}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
-                    >
-                      <option value="income">รายรับ</option>
-                      <option value="expense">รายจ่าย</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium mb-2">จำนวนเงิน (฿)</label>
-                    <input
-                      type="number"
-                      value={formData.amount}
-                      onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
-                      placeholder="0.00"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium mb-2">หมวดหมู่</label>
-                    <select
-                      value={formData.category}
-                      onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
-                    >
-                      <option value="">เลือกหมวดหมู่</option>
-                      {CATEGORIES[formData.type].map(cat => (
-                        <option key={cat} value={cat}>{cat}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium mb-2">วันที่</label>
-                    <input
-                      type="date"
-                      value={formData.date}
-                      onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
-                    />
-                  </div>
-
-                  <div className="md:col-span-2">
-                    <label className="block text-sm font-medium mb-2">รายละเอียด</label>
-                    <input
-                      type="text"
-                      value={formData.description}
-                      onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
-                      placeholder="ระบุรายละเอียด..."
-                    />
-                  </div>
-
-                  <div className="md:col-span-2">
-                    <label className="block text-sm font-medium mb-2">Tags (คั่นด้วยจุลภาค)</label>
-                    <input
-                      type="text"
-                      value={formData.tags}
-                      onChange={(e) => setFormData({ ...formData, tags: e.target.value })}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
-                      placeholder="เช่น: ฉุกเฉิน, จำเป็น, ความบันเทิง"
-                    />
-                  </div>
-                </div>
-
-                <div className="flex gap-3 mt-6">
-                  <button
-                    onClick={addTransaction}
-                    className="flex-1 bg-gradient-to-r from-purple-600 to-pink-600 text-white py-3 rounded-lg font-semibold hover:shadow-lg transition"
-                  >
-                    บันทึก
-                  </button>
-                  <button
-                    onClick={() => setShowAddForm(false)}
-                    className="px-6 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition"
-                  >
-                    ยกเลิก
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Charts */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-              {/* Pie */}
-              <div className="bg-white rounded-xl p-6 shadow-md">
-                <h3 className="text-lg font-bold mb-4">สัดส่วนตามหมวดหมู่</h3>
-                {categoryData.length > 0 ? (
-                  <ResponsiveContainer width="100%" height={300}>
-                    <PieChart>
-                      <Pie
-                        data={categoryData}
-                        cx="50%"
-                        cy="50%"
-                        labelLine={false}
-                        label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
-                        outerRadius={80}
-                        fill="#8884d8"
-                        dataKey="value"
-                      >
-                        {categoryData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                        ))}
-                      </Pie>
-                      <Tooltip formatter={(value) => `฿${value.toLocaleString()}`} />
-                    </PieChart>
-                  </ResponsiveContainer>
-                ) : (
-                  <p className="text-gray-500 text-center py-20">ยังไม่มีข้อมูล</p>
-                )}
-              </div>
-
-              {/* Line */}
-              <div className="bg-white rounded-xl p-6 shadow-md">
-                <h3 className="text-lg font-bold mb-4">แนวโน้ม 6 เดือนล่าสุด</h3>
-                {monthlyData.length > 0 ? (
-                  <ResponsiveContainer width="100%" height={300}>
-                    <LineChart data={monthlyData}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="month" />
-                      <YAxis />
-                      <Tooltip formatter={(value) => `฿${value.toLocaleString()}`} />
-                      <Legend />
-                      <Line type="monotone" dataKey="income" stroke="#10b981" strokeWidth={2} name="รายรับ" />
-                      <Line type="monotone" dataKey="expense" stroke="#ef4444" strokeWidth={2} name="รายจ่าย" />
-                    </LineChart>
-                  </ResponsiveContainer>
-                ) : (
-                  <p className="text-gray-500 text-center py-20">ยังไม่มีข้อมูล</p>
-                )}
-              </div>
-            </div>
-
-            {/* Transactions List */}
-            <div className="bg-white rounded-xl p-6 shadow-md">
-              <h3 className="text-lg font-bold mb-4">
-                รายการทั้งหมด ({getFilteredTransactions().length})
-              </h3>
-              <div className="space-y-3 max-h-96 overflow-y-auto">
-                {getFilteredTransactions().map(transaction => (
-                  <div
-                    key={transaction.id}
-                    className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:shadow-md transition"
-                  >
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-1">
-                        <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                          transaction.type === 'income'
-                            ? 'bg-green-100 text-green-700'
-                            : 'bg-red-100 text-red-700'
-                        }`}>
-                          {transaction.category}
-                        </span>
-                        <span className="text-gray-500 text-sm">{transaction.date}</span>
-                      </div>
-                      <p className="text-gray-700 font-medium">
-                        {transaction.description || 'ไม่มีรายละเอียด'}
-                      </p>
-                      {transaction.tags.length > 0 && (
-                        <div className="flex gap-2 mt-2">
-                          {transaction.tags.map((tag, idx) => (
-                            <span
-                              key={idx}
-                              className="flex items-center gap-1 text-xs bg-purple-50 text-purple-600 px-2 py-1 rounded"
-                            >
-                              <span className="text-xs">#</span>
-                              {tag}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-4">
-                      <span
-                        className={`text-xl font-bold ${
-                          transaction.type === 'income' ? 'text-green-600' : 'text-red-600'
-                        }`}
-                      >
-                        {transaction.type === 'income' ? '+' : '-'}฿{transaction.amount.toLocaleString()}
-                      </span>
-                      <button
-                        onClick={() => deleteTransaction(transaction.id)}
-                        className="text-red-500 hover:bg-red-50 p-2 rounded-lg transition"
-                      >
-                        ลบ
-                      </button>
-                    </div>
-                  </div>
-                ))}
-                {getFilteredTransactions().length === 0 && (
-                  <p className="text-gray-500 text-center py-20">ยังไม่มีรายการในช่วงเวลานี้</p>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      );
+  <title>Personal Productivity Dashboard</title>
+  <!-- ใช้ฟอนต์ Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+  <!-- Chart.js จาก CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
     }
 
-    const root = ReactDOM.createRoot(document.getElementById('root'));
-    root.render(<MoneyTracker />);
+    body {
+      font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #0f172a;
+      color: #e5e7eb;
+      min-height: 100vh;
+      padding: 24px;
+      display: flex;
+      justify-content: center;
+    }
+
+    .dashboard {
+      width: 100%;
+      max-width: 1100px;
+    }
+
+    header {
+      margin-bottom: 24px;
+    }
+
+    header h1 {
+      font-size: 1.8rem;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+
+    header p {
+      font-size: 0.9rem;
+      color: #9ca3af;
+    }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .card {
+      background: linear-gradient(135deg, #1f2933, #111827);
+      border-radius: 16px;
+      padding: 16px 18px;
+      border: 1px solid rgba(148, 163, 184, 0.18);
+      box-shadow: 0 18px 45px rgba(15, 23, 42, 0.6);
+    }
+
+    .card-label {
+      font-size: 0.8rem;
+      color: #9ca3af;
+      margin-bottom: 6px;
+    }
+
+    .card-value {
+      font-size: 1.6rem;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+
+    .card-sub {
+      font-size: 0.75rem;
+      color: #6b7280;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 1.3fr 1fr;
+      gap: 20px;
+    }
+
+    @media (max-width: 900px) {
+      .layout {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .panel {
+      background: #020617;
+      border-radius: 18px;
+      padding: 16px 18px 18px 18px;
+      border: 1px solid rgba(148, 163, 184, 0.25);
+      box-shadow: 0 18px 40px rgba(15, 23, 42, 0.7);
+    }
+
+    .panel-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+
+    .panel-title {
+      font-size: 0.95rem;
+      font-weight: 600;
+    }
+
+    .panel-subtitle {
+      font-size: 0.75rem;
+      color: #6b7280;
+    }
+
+    .tag {
+      font-size: 0.7rem;
+      padding: 4px 8px;
+      border-radius: 999px;
+      background: rgba(55, 65, 81, 0.9);
+      color: #e5e7eb;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.8rem;
+    }
+
+    thead {
+      border-bottom: 1px solid rgba(55, 65, 81, 0.9);
+    }
+
+    th, td {
+      padding: 8px 4px;
+      text-align: left;
+      white-space: nowrap;
+    }
+
+    th {
+      color: #9ca3af;
+      font-weight: 500;
+      font-size: 0.75rem;
+    }
+
+    tbody tr:nth-child(even) {
+      background: rgba(15, 23, 42, 0.7);
+    }
+
+    .status-pill {
+      font-size: 0.7rem;
+      padding: 4px 8px;
+      border-radius: 999px;
+      display: inline-block;
+    }
+
+    .status-done {
+      background: rgba(34, 197, 94, 0.12);
+      color: #4ade80;
+    }
+
+    .status-in {
+      background: rgba(59, 130, 246, 0.12);
+      color: #60a5fa;
+    }
+
+    .status-pending {
+      background: rgba(234, 179, 8, 0.12);
+      color: #facc15;
+    }
+
+    .priority-high {
+      color: #f97373;
+    }
+
+    .priority-med {
+      color: #fb923c;
+    }
+
+    .priority-low {
+      color: #22c55e;
+    }
+
+    .category-pill {
+      font-size: 0.7rem;
+      padding: 3px 8px;
+      border-radius: 999px;
+      background: rgba(31, 41, 55, 0.8);
+      color: #e5e7eb;
+    }
+
+    .footer-note {
+      margin-top: 16px;
+      font-size: 0.7rem;
+      color: #6b7280;
+      text-align: right;
+    }
+  </style>
+</head>
+<body>
+  <div class="dashboard">
+    <header>
+      <h1>Personal Productivity Dashboard</h1>
+      <p>Overview of your tasks, progress, and focus areas.</p>
+    </header>
+
+    <!-- Summary Cards -->
+    <section class="cards">
+      <div class="card">
+        <div class="card-label">Total Tasks</div>
+        <div class="card-value" id="totalTasks">0</div>
+        <div class="card-sub">All tasks in your current list</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Completed</div>
+        <div class="card-value" id="completedTasks">0</div>
+        <div class="card-sub">Tasks you have finished</div>
+      </div>
+      <div class="card">
+        <div class="card-label">In Progress</div>
+        <div class="card-value" id="inProgressTasks">0</div>
+        <div class="card-sub">Currently working on</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Pending</div>
+        <div class="card-value" id="pendingTasks">0</div>
+        <div class="card-sub">Not started yet</div>
+      </div>
+    </section>
+
+    <section class="layout">
+      <!-- Tasks Table Panel -->
+      <div class="panel">
+        <div class="panel-header">
+          <div>
+            <div class="panel-title">Task List</div>
+            <div class="panel-subtitle">Sample tasks – edit in JavaScript as you like.</div>
+          </div>
+          <span class="tag">Static Demo</span>
+        </div>
+        <div class="panel-body">
+          <table>
+            <thead>
+              <tr>
+                <th>Task</th>
+                <th>Category</th>
+                <th>Priority</th>
+                <th>Status</th>
+                <th>Due</th>
+              </tr>
+            </thead>
+            <tbody id="taskTableBody">
+              <!-- rows from JS -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Chart Panel -->
+      <div class="panel">
+        <div class="panel-header">
+          <div>
+            <div class="panel-title">Tasks by Category</div>
+            <div class="panel-subtitle">How your tasks are distributed.</div>
+          </div>
+          <span class="tag">Bar Chart</span>
+        </div>
+        <div class="panel-body">
+          <canvas id="tasksChart" height="220"></canvas>
+        </div>
+      </div>
+    </section>
+
+    <div class="footer-note">
+      Edit the task data in <strong>&lt;script&gt;</strong> to customize this dashboard.
+    </div>
+  </div>
+
+  <script>
+    // -----------------------------
+    // 1) ข้อมูลตัวอย่าง (แก้ตรงนี้ได้เลย)
+    // -----------------------------
+    const tasks = [
+      {
+        title: "Design portfolio homepage",
+        category: "Work",
+        priority: "High",
+        status: "Completed",
+        due: "2025-11-10"
+      },
+      {
+        title: "Study JavaScript promises",
+        category: "Learning",
+        priority: "Medium",
+        status: "In Progress",
+        due: "2025-11-16"
+      },
+      {
+        title: "Refactor dashboard layout",
+        category: "Work",
+        priority: "High",
+        status: "In Progress",
+        due: "2025-11-20"
+      },
+      {
+        title: "Daily workout",
+        category: "Personal",
+        priority: "Low",
+        status: "Completed",
+        due: "2025-11-13"
+      },
+      {
+        title: "Read UI/UX blog article",
+        category: "Learning",
+        priority: "Low",
+        status: "Pending",
+        due: "2025-11-18"
+      },
+      {
+        title: "Clean up GitHub repositories",
+        category: "Personal",
+        priority: "Medium",
+        status: "Pending",
+        due: "2025-11-25"
+      }
+    ];
+
+    // -----------------------------
+    // 2) ฟังก์ชันช่วย
+    // -----------------------------
+    function createStatusClass(status) {
+      if (status === "Completed") return "status-pill status-done";
+      if (status === "In Progress") return "status-pill status-in";
+      return "status-pill status-pending";
+    }
+
+    function priorityClass(priority) {
+      if (priority === "High") return "priority-high";
+      if (priority === "Medium") return "priority-med";
+      return "priority-low";
+    }
+
+    // -----------------------------
+    // 3) Render ตาราง
+    // -----------------------------
+    function renderTable() {
+      const tbody = document.getElementById("taskTableBody");
+      tbody.innerHTML = "";
+
+      tasks.forEach(task => {
+        const tr = document.createElement("tr");
+
+        tr.innerHTML = `
+          <td>${task.title}</td>
+          <td><span class="category-pill">${task.category}</span></td>
+          <td><span class="${priorityClass(task.priority)}">${task.priority}</span></td>
+          <td><span class="${createStatusClass(task.status)}">${task.status}</span></td>
+          <td>${task.due}</td>
+        `;
+
+        tbody.appendChild(tr);
+      });
+    }
+
+    // -----------------------------
+    // 4) อัปเดตการ์ดสรุปด้านบน
+    // -----------------------------
+    function updateSummaryCards() {
+      const total = tasks.length;
+      const completed = tasks.filter(t => t.status === "Completed").length;
+      const inProgress = tasks.filter(t => t.status === "In Progress").length;
+      const pending = tasks.filter(t => t.status === "Pending").length;
+
+      document.getElementById("totalTasks").textContent = total;
+      document.getElementById("completedTasks").textContent = completed;
+      document.getElementById("inProgressTasks").textContent = inProgress;
+      document.getElementById("pendingTasks").textContent = pending;
+    }
+
+    // -----------------------------
+    // 5) สร้าง Chart ตาม Category
+    // -----------------------------
+    function renderChart() {
+      const ctx = document.getElementById("tasksChart").getContext("2d");
+
+      // นับจำนวน task ตาม category
+      const categoryCounts = {};
+      tasks.forEach(task => {
+        categoryCounts[task.category] = (categoryCounts[task.category] || 0) + 1;
+      });
+
+      const labels = Object.keys(categoryCounts);
+      const data = Object.values(categoryCounts);
+
+      new Chart(ctx, {
+        type: "bar",
+        data: {
+          labels,
+          datasets: [{
+            label: "Number of Tasks",
+            data,
+            borderWidth: 1
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: {
+              labels: {
+                color: "#e5e7eb",
+                font: {
+                  size: 11
+                }
+              }
+            }
+          },
+          scales: {
+            x: {
+              ticks: {
+                color: "#9ca3af",
+                font: { size: 10 }
+              },
+              grid: {
+                display: false
+              }
+            },
+            y: {
+              ticks: {
+                color: "#9ca3af",
+                font: { size: 10 },
+                stepSize: 1
+              },
+              grid: {
+                color: "rgba(55, 65, 81, 0.7)"
+              },
+              beginAtZero: true
+            }
+          }
+        }
+      });
+    }
+
+    // -----------------------------
+    // 6) เรียกใช้งานตอนโหลดหน้า
+    // -----------------------------
+    renderTable();
+    updateSummaryCards();
+    renderChart();
   </script>
 </body>
 </html>
